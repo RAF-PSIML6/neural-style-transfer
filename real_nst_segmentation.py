@@ -414,23 +414,23 @@ def image_loader_tensor(image_tensor):
     return image_tensor.unsqueeze(0).to(device, torch.float)
 
 
-img_style = cv.imread(os.getcwd()+"/data/style-images/"+"vg_starry_night.jpg")
+img_style = cv.imread(os.getcwd()+"/data/style-images/"+"mosaic.jpg")
 # img = cv.imread(os.getcwd()+"/data/content-images/"+"tubingen.png")
 dst_style = cv.cvtColor(img_style, cv.COLOR_BGR2RGB)
 dst_style = dst_style / 255
 
-img_style2 = cv.imread(os.getcwd()+"/data/style-images/"+"vg_la_cafe.jpg")
+img_style2 = cv.imread(os.getcwd()+"/data/style-images/"+"vg_wheat_field.jpg")
 # img = cv.imread(os.getcwd()+"/data/content-images/"+"tubingen.png")
 dst_style2 = cv.cvtColor(img_style2, cv.COLOR_BGR2RGB)
 dst_style2 = dst_style2 / 255
 
-img_content = cv.imread(os.getcwd()+"/data/video/"+"out58.png")
+img_content = cv.imread(os.getcwd()+"/data/content-images/"+"zena.jpeg")
 # dst = cv.resize(img_content, (1000, 650))
 # img = cv.imread(os.getcwd()+"/data/content-images/"+"tubingen.png")
 dst_content = cv.cvtColor(img_content, cv.COLOR_BGR2RGB)
 dst_content = dst_content / 255
 
-mask_content = cv.imread(os.getcwd()+"/maska2.png")
+mask_content = cv.imread(os.getcwd()+"/maska.png")
 dst_mask = cv.cvtColor(mask_content, cv.COLOR_BGR2RGB)
 dst_mask = dst_mask / 255
 fm_guides = get_fm_guides(dst_mask, model)
@@ -462,7 +462,7 @@ with_unorm = with_unorm.transpose(1, 2, 0)
 with_unorm = cv.cvtColor(with_unorm, cv.COLOR_RGB2BGR)
 with_unorm = with_unorm.astype(int)
 print('min ', np.min(with_unorm), 'max ', np.max(with_unorm))
-cv.imwrite("rezultat_final_350_normal29.png", with_unorm.astype(int))
+cv.imwrite("rezultat_final_350_normal30.png", with_unorm.astype(int))
 
 # normal: alpha = 1, beta 10e3
 # normal2: alpha = 1e5, beta = 3e8
