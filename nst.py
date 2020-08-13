@@ -1,13 +1,9 @@
 # Python's native libraries
-import time
 import os
-import copy
-from collections import defaultdict
 
 # deep learning/vision libraries
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 from torchvision import datasets, models, transforms
@@ -15,46 +11,29 @@ import cv2 as cv  # OpenCV
 
 # numeric and plotting libraries
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 
 import copy
 import random
 
 
-def train_photo(model, criterion, photo, layer_idx, activation, num_epochs=40):
-    #     start_time = time.time()
-
+def generate_content_from_noise(model, criterion, photo, activation, num_steps=1000):
     photo = photo.transpose(2, 0, 1)
-    # noise_img_tensor = torch.rand(photo.shape)
     white_noise_img = np.random.uniform(-90., 90., photo.shape).astype(np.float32)
     noise_img_tensor = torch.from_numpy(white_noise_img)
-
-    IMAGENET_MEAN_1 = np.array([0.485, 0.456, 0.406])
-    IMAGENET_STD_1 = np.array([0.229, 0.224, 0.225])
 
     IMAGENET_MEAN_255 = [123.675, 116.28, 103.53]
     IMAGENET_MEAN_STD_NEUTRAL = [1, 1, 1]
 
-    # loader = transforms.Compose([transforms.Normalize(IMAGENET_MEAN_1, IMAGENET_STD_1)])
-    loader = transforms.Compose([
+    transformer = transforms.Compose([
         transforms.Lambda(lambda x: x.mul(255)),
-        # transforms.Normalize(IMAGENET_MEAN_1, IMAGENET_STD_1)
         transforms.Normalize(IMAGENET_MEAN_255, IMAGENET_MEAN_STD_NEUTRAL)
     ])
 
-    # noise_img_tensor = loader(noise_img_tensor).float()
     noise_img = torch.autograd.Variable(noise_img_tensor, requires_grad=True)
 
-    photo = loader(torch.from_numpy(photo)).float()
-    # print(photo)
-    # for epoch in range(num_epochs):
-    #    if epoch % 20 == 0:
-    #        print(f'Epoch {epoch}/{num_epochs - 1}')
-    #        print('-' * 10)
+    photo = transformer(torch.from_numpy(photo)).float()
 
     model.eval()
-
     count = 0
 
     _ = model(image_loader_tensor(photo))
@@ -62,11 +41,8 @@ def train_photo(model, criterion, photo, layer_idx, activation, num_epochs=40):
 
     def closure():
         nonlocal count
-        # torch.clamp(noise_img, 0, 1) # 255
 
         optimizer.zero_grad()
-
-        # with torch.set_grad_enabled(False):
 
         _ = model(image_loader_tensor(noise_img))
         noisy_activation = activation['conv4_2']
@@ -86,64 +62,45 @@ def train_photo(model, criterion, photo, layer_idx, activation, num_epochs=40):
 
         return loss
 
-    optimizer = optim.LBFGS([noise_img.requires_grad_()], max_iter=350, line_search_fn='strong_wolfe')
+    optimizer = optim.LBFGS([noise_img.requires_grad_()], max_iter=num_steps, line_search_fn='strong_wolfe')
     optimizer.step(closure)
-
-    # time_elapsed = time.time() - start_time
-    # print(f'Training complete in {(time_elapsed // 60):.0f}m {time_elapsed % 60:.0f}s')
 
     return noise_img
 
 
-def train_photo2(model, criterion, photo, layer_idx, activation, num_epochs=40):
-    #     start_time = time.time()
-
+def generate_style_from_noise(model, criterion, photo, activation, num_steps=1000):
     photo = photo.transpose(2, 0, 1)
 
     white_noise_img = np.random.uniform(-90., 90., photo.shape).astype(np.float32)
     noise_img_tensor = torch.from_numpy(white_noise_img)
 
-    # IMAGENET_MEAN_1 = np.array([0.485, 0.456, 0.406])
-    # IMAGENET_STD_1 = np.array([0.229, 0.224, 0.225])
-
     IMAGENET_MEAN_255 = [123.675, 116.28, 103.53]
     IMAGENET_MEAN_STD_NEUTRAL = [1, 1, 1]
 
-    loader = transforms.Compose([
+    transformer = transforms.Compose([
         transforms.Lambda(lambda x: x.mul(255)),
-        # transforms.Normalize(IMAGENET_MEAN_1, IMAGENET_STD_1)
         transforms.Normalize(IMAGENET_MEAN_255, IMAGENET_MEAN_STD_NEUTRAL)
     ])
 
-    # noise_img_tensor = loader(noise_img_tensor).float()
     noise_img = torch.autograd.Variable(noise_img_tensor, requires_grad=True)
 
-    photo = loader(torch.from_numpy(photo)).float()
-
-    # print(photo)
-    # for epoch in range(num_epochs):
-    #    if epoch % 20 == 0:
-    #        print(f'Epoch {epoch}/{num_epochs - 1}')
-    #        print('-' * 10)
+    photo = transformer(torch.from_numpy(photo)).float()
 
     model.eval()
-
     count = 0
 
     layers = ['conv1_1', 'conv2_1', 'conv3_1', 'conv4_1', 'conv5_1']
 
-    outputs2 = model(image_loader_tensor(photo))
+    _ = model(image_loader_tensor(photo))
     original_activations = {}
+
     for i in layers:
         original_activations[i] = copy.deepcopy(activation[i])
 
     def closure():
         nonlocal count
-        # torch.clamp(noise_img, 0, 1) # 255
 
         optimizer.zero_grad()
-
-        # with torch.set_grad_enabled(False):
 
         loss = 0
 
@@ -168,11 +125,8 @@ def train_photo2(model, criterion, photo, layer_idx, activation, num_epochs=40):
 
         return loss
 
-    optimizer = optim.LBFGS((noise_img,), max_iter=350, line_search_fn='strong_wolfe')
+    optimizer = optim.LBFGS((noise_img,), max_iter=num_steps, line_search_fn='strong_wolfe')
     optimizer.step(closure)
-
-    # time_elapsed = time.time() - start_time
-    # print(f'Training complete in {(time_elapsed // 60):.0f}m {time_elapsed % 60:.0f}s')
 
     return noise_img
 
@@ -182,42 +136,27 @@ def total_variation(y):
            torch.sum(torch.abs(y[:, :-1, :] - y[:, 1:, :]))
 
 
-def train_photo3(model, criterion_content, criterion_style, photo_content, photo_style, layer_idx, activation,
-                 num_epochs=40):
-    #     start_time = time.time()
-
+def neural_style_transfer(model, criterion_content, criterion_style, photo_content, photo_style, activation, num_steps=1000):
     photo_style = cv.resize(photo_style, (photo_content.shape[1], photo_content.shape[0]), interpolation=cv.INTER_CUBIC)
     photo_content = photo_content.transpose(2, 0, 1)
     photo_style = photo_style.transpose(2, 0, 1)
 
-    # white_noise_img = np.random.uniform(-90., 90., photo_style.shape).astype(np.float32)
-    # white_noise_img = np.random.uniform(size=photo_style.shape)
     content_copy_img = copy.deepcopy(photo_content)
     noise_img_tensor = torch.from_numpy(content_copy_img)
-
-    # IMAGENET_MEAN_1 = np.array([0.485, 0.456, 0.406])
-    # IMAGENET_STD_1 = np.array([0.229, 0.224, 0.225])
 
     IMAGENET_MEAN_255 = [123.675, 116.28, 103.53]
     IMAGENET_MEAN_STD_NEUTRAL = [1, 1, 1]
 
-    loader = transforms.Compose([
+    transformer = transforms.Compose([
         transforms.Lambda(lambda x: x.mul(255)),
-        # transforms.Normalize(IMAGENET_MEAN_1, IMAGENET_STD_1)
         transforms.Normalize(IMAGENET_MEAN_255, IMAGENET_MEAN_STD_NEUTRAL)
     ])
 
-    noise_img_tensor = loader(noise_img_tensor).float()
+    noise_img_tensor = transformer(noise_img_tensor).float()
     noise_img = torch.autograd.Variable(noise_img_tensor, requires_grad=True)
 
-    photo_content = loader(torch.from_numpy(photo_content)).float()
-    photo_style = loader(torch.from_numpy(photo_style)).float()
-
-    # print(photo)
-    # for epoch in range(num_epochs):
-    #    if epoch % 20 == 0:
-    #        print(f'Epoch {epoch}/{num_epochs - 1}')
-    #        print('-' * 10)
+    photo_content = transformer(torch.from_numpy(photo_content)).float()
+    photo_style = transformer(torch.from_numpy(photo_style)).float()
 
     model.eval()
 
@@ -235,13 +174,9 @@ def train_photo3(model, criterion_content, criterion_style, photo_content, photo
 
     def closure():
         nonlocal count
-        # torch.clamp(noise_img, 0, 1) # 255
 
         optimizer.zero_grad()
 
-        # with torch.set_grad_enabled(False):
-
-        # loss = 0
         style_loss_var = 0
 
         _ = model(image_loader_tensor(noise_img))
@@ -253,7 +188,6 @@ def train_photo3(model, criterion_content, criterion_style, photo_content, photo
             style_loss_var += criterion_style(noisy_activaton, original_activation)
 
         content_loss_var = criterion_content(activation['conv4_2'], original_activation_content)
-        # print(torch.all(torch.eq(activation['conv4_2'], original_activation_content)))
 
         alpha = 1e3
         beta = 3e9
@@ -268,27 +202,22 @@ def train_photo3(model, criterion_content, criterion_style, photo_content, photo
         epoch_loss = running_loss
 
         if (count + 0) % 20 == 0:
-            print('Content ', content_loss_var)
-            print('Style ', style_loss_var)
-            print('Total variation', tv_loss)
+            print('Content loss: ', content_loss_var)
+            print('Style loss: ', style_loss_var)
+            print('Total variation loss: ', tv_loss)
             print(f'Iteration: {count:03}, Loss: {epoch_loss:.4f}')
 
         count += 1
 
         return total_loss
 
-    optimizer = optim.LBFGS((noise_img,), max_iter=1000, line_search_fn='strong_wolfe')
+    optimizer = optim.LBFGS((noise_img,), max_iter=num_steps, line_search_fn='strong_wolfe')
     optimizer.step(closure)
-
-    # time_elapsed = time.time() - start_time
-    # print(f'Training complete in {(time_elapsed // 60):.0f}m {time_elapsed % 60:.0f}s')
 
     return noise_img
 
 
 activation = {}
-
-
 def get_activation(name):
     def hook(model, input, output):
         activation[name] = output
@@ -297,19 +226,14 @@ def get_activation(name):
 
 
 def content_loss(noisy_img, original_img):
-    #     noisy_img = torch.reshape(noisy_img, (-1,))
-    #     original_img = torch.reshape(original_img, (-1,))
     loss = nn.MSELoss(reduction='sum')
     return loss(noisy_img.squeeze(axis=0), original_img.squeeze(axis=0)) / 2
 
 
 def get_gm(layer):
-    # print(layer[0].shape)
-    # layer[0] = torch.reshape(layer[0], (layer[0].shape[0], layer[0].shape[1] * layer[0].shape[2]))  # L*H*W -> L*M (M = H*W)
     a, b, c, d = layer.size()
     features = layer.view(a * b, c * d)
     gram = torch.matmul(features, features.t())
-    # gram /= a * b * c * d
 
     return gram
 
@@ -320,27 +244,7 @@ def style_loss(noisy_layer, original_layer):
 
     E = nn.MSELoss(reduction='sum')
 
-    # return 0.2 * E(A, G)
     return 0.2 * E(A, G) / ((2 * noisy_layer.shape[1] * noisy_layer.shape[2] * noisy_layer.shape[3]) ** 2)
-
-
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-
-model = torchvision.models.vgg19(pretrained=True)
-model.features[1].register_forward_hook(get_activation('conv1_1'))
-model.features[6].register_forward_hook(get_activation('conv2_1'))
-model.features[11].register_forward_hook(get_activation('conv3_1'))
-model.features[20].register_forward_hook(get_activation('conv4_1'))
-model.features[22].register_forward_hook(get_activation('conv4_2'))
-model.features[29].register_forward_hook(get_activation('conv5_1'))
-
-for param in model.parameters():
-    param.requires_grad = False
-
-model = model.to(device)
-
-
-# optimizer = optim.Adam(filter(lambda p: p.requires_grad, finetuned_model.parameters()))
 
 
 def unnormalize(tensor, mean, std):
@@ -357,21 +261,31 @@ def unnormalize(tensor, mean, std):
 
 
 def image_loader(image):
-    #     image = image.transpose((2, 0, 1))
     return torch.from_numpy(image).unsqueeze(0).to(device, torch.float)
 
 
 def image_loader_tensor(image_tensor):
-    # image_tensor = image_tensor.transpose((2, 0, 1))
     return image_tensor.unsqueeze(0).to(device, torch.float)
 
 
 if __name__ == '__main__':
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    model = torchvision.models.vgg19(pretrained=True)
+    model.features[1].register_forward_hook(get_activation('conv1_1'))
+    model.features[6].register_forward_hook(get_activation('conv2_1'))
+    model.features[11].register_forward_hook(get_activation('conv3_1'))
+    model.features[20].register_forward_hook(get_activation('conv4_1'))
+    model.features[22].register_forward_hook(get_activation('conv4_2'))
+    model.features[29].register_forward_hook(get_activation('conv5_1'))
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    model = model.to(device)
 
     style_folder_name = os.getcwd() + "/data/style-images/"
     content_folder_name = os.getcwd() + "/data/content-images/"
-    style_folder_name = style_folder_name.replace("/", "\\")
-    content_folder_name = content_folder_name.replace("/", "\\")
 
     style_content = []
 
@@ -379,31 +293,20 @@ if __name__ == '__main__':
         for img_content_name in os.listdir(content_folder_name):
             style_content.append({img_style_name, img_content_name})
 
-    # print(style_content)
     random.shuffle(style_content)
-    # print(style_content)
-
-    # for img_style_name, img_content_name in style_content:
-    #     print(img_style_name + '_' + img_content_name)
-
-    # style_content = [{"golden_gate.jpg", "flowers_crop.jpg"}]
 
     for img_style_name, img_content_name in style_content:
         print(img_style_name.split('.')[0], img_content_name.split('.')[0])
 
-        # print(style_folder_name + img_style_name)
-        # print(content_folder_name + img_content_name)
         flag = True
         c = 0
         failedFlag = False
+
         while flag:
             try:
                 img_style = cv.imread(style_folder_name + img_style_name)
-                # print(style_folder_name + img_style_name)
                 dst_style = cv.cvtColor(img_style, cv.COLOR_BGR2RGB)
-                # print(style_folder_name + img_style_name)
                 dst_style = dst_style / 255
-
 
                 img_content = cv.imread(content_folder_name + img_content_name)
                 dst = img_content
@@ -431,61 +334,18 @@ if __name__ == '__main__':
                 if c > 100:
                     failedFlag = True
                     break
+
         if failedFlag:
             continue
 
-        # base = train_photo(model, content_loss, dst, 0, activation).detach()
-        # base = train_photo2(model, style_loss, dst, 0, activation).detach()
-        base = train_photo3(model, content_loss, style_loss, dst_content, dst_style, 0, activation).detach()
+        base = neural_style_transfer(model, content_loss, style_loss, dst_content, dst_style, activation).detach()
         no_unorm = base.numpy()
 
-        print('min ', np.min(no_unorm), 'max ', np.max(no_unorm))
-
         with_unorm = unnormalize(base, (123.675, 116.28, 103.53), (1, 1, 1)).numpy()
-        # with_unorm = unnormalize(base, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)).numpy()
-
-        print('min ', np.min(with_unorm), 'max ', np.max(with_unorm))
-
         with_unorm = with_unorm.transpose(1, 2, 0)
 
-        # f, (ax1, ax2) = plt.subplots(1, 2)
-        # ax1.imshow(with_unorm)
-        # # ax1.imshow(no_unorm)
-        # ax2.imshow(dst)
-        # plt.show()
-
-        # with_unorm *= 255
-        # print('min ', np.min(with_unorm), 'max ', np.max(with_unorm))
-
-        # with_unorm_32 = np.float32(with_unorm)
         with_unorm = cv.cvtColor(with_unorm, cv.COLOR_RGB2BGR)
         with_unorm = with_unorm.astype(int)
-        print('min ', np.min(with_unorm), 'max ', np.max(with_unorm))
-        # cv.imwrite("rezultat_final_350_normal25.png", with_unorm.astype(int))
 
         out_name = img_style_name.split('.')[0] + '_' + img_content_name.split('.')[0]
-        cv.imwrite("komb2\\" + out_name + ".png", with_unorm.astype(int))
-
-# normal: alpha = 1, beta 10e3
-# normal2: alpha = 1e5, beta = 3e8
-# normal3: alpha = 1e5, beta = 3e7
-# normal4: alpha = 1e5, beta = 3e9, tv_loss exists, gamma = 1
-# normal5: alpha = 1e5, beta = 3e12, tv_loss exists, gamma = 1 Loss: nan
-# normal6: alpha = 8, beta = 1e8, gamma = 1
-# normal7: alpha = 1e5, beta = 1e10, gamma = 1
-# normal8: alpha = 1e5, beta = 3e8, gamma = 1
-# normal9: alpha = 1e5, beta = 3e8, gamma = 0
-# normal10: alpha = 1e5, beta = 3e8, gamma = 1
-# normal11: alpha = 1e5, beta = 3e8, gamma = 10
-# normal12: alpha = 1e5, beta = 3e8, gamma = 1e3
-# normal13: alpha = 1e5, beta = 3e8, gamma = 1e3, initialized with content image, no normalization, bad rgb
-# normal14: alpha = 1e5, beta = 3e8, gamma = 1e3, initialized with content image, with normalization, bad rgb
-# normal15: alpha = 1e5, beta = 3e9, gamma = 1e3, initialized with content image, with normalization
-# normal16: alpha = 1e4, beta = 3e9, gamma = 1e3, initialized with content image, with normalization
-# normal17: alpha = 1e4, beta = 3e9, gamma = 1e3, initialized with content image, with normalization, brigde with cafe
-# normal18: alpha = 1e3, beta = 3e9, gamma = 1e3, initialized with content image, with normalization
-# normal19: alpha = 1e3, beta = 3e9, gamma = 1e1, initialized with content image, with normalization
-# normal20: alpha = 1e3, beta = 3e10, gamma = 1e3, initialized with content image, with normalization
-# normal21: alpha = 1e3, beta = 3e10, initialized with content image, with normalization
-# normal22: alpha = 1e3, beta = 3e10, gamma = 1e4 initialized with content image, with normalization
-# normal23: alpha = 1e3, beta = 3e9, gamma = 1e3 initialized with content image, with normalization
+        cv.imwrite("data/results/" + out_name + ".png", with_unorm.astype(int))

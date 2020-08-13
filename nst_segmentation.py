@@ -1,10 +1,6 @@
-import os
-
 from torchvision import models
 import torch
-from torchvision import datasets
 from torchvision import transforms
-from torch.utils.data import DataLoader
 import numpy as np
 import cv2 as cv
 
@@ -53,13 +49,12 @@ def post_process_mask(mask):
     else:  # only 1 component found (probably background) we don't need further processing
         return opened_mask
 
-import utils
+
 def segment_photo(photo):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # img = cv.imread(os.getcwd()+"/data/video/"+"out58.png")
     img = photo
     transform = transforms.Compose([
-            # transforms.Resize((segmentation_mask_height, segmentation_mask_width)),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN_1, std=IMAGENET_STD_1)
         ])
@@ -67,7 +62,6 @@ def segment_photo(photo):
 
 
     def image_loader_tensor(image_tensor):
-        # image_tensor = image_tensor.transpose((2, 0, 1))
         return image_tensor.unsqueeze(0).to(device, torch.float)
 
 
@@ -76,6 +70,7 @@ def segment_photo(photo):
     mask = np.argmax(result_batch[0], axis=0) == PERSON_CHANNEL_INDEX
     mask = np.uint8(mask * 255)  # convert from bool to [0, 255] black & white image
     processed_mask = post_process_mask(mask)  # simple heuristics (connected components, etc.)
+
     # cv.imwrite("maska3.png", mask)
-    return mask
+    return processed_mask
 
